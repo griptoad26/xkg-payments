@@ -1,0 +1,56 @@
+# XKG Multi-Payment Configuration
+
+stripe:
+  # Get from https://dashboard.stripe.com/apikeys
+  secret_key: "REPLACE_WITH_STRIPE_SECRET_KEY"
+  publishable_key: "REPLACE_WITH_STRIPE_PUBLISHABLE_KEY"
+  webhook_secret: "REPLACE_WITH_STRIPE_WEBHOOK_SECRET"
+  
+  # Price IDs from Stripe dashboard (create products first)
+  prices:
+    thick_client: "price_REPLACE_WITH_STRIPE_PRICE_ID"
+    vps_monthly: "price_REPLACE_WITH_STRIPE_PRICE_ID"
+    hardware_bundle: "price_REPLACE_WITH_STRIPE_PRICE_ID"
+  
+  success_url: "https://xkg.ai/success"
+  cancel_url: "https://xkg.ai/pricing"
+
+lemon_squeezy:
+  # Get from https://app.lemonsqueezy.com/settings/api
+  api_key: "REPLACE_WITH_LS_API_KEY"
+  store_id: "REPLACE_WITH_LS_STORE_ID"
+  
+  # Variant IDs from LemonSqueezy products
+  variants:
+    thick_client: "REPLACE_WITH_VARIANT_ID"
+    vps_monthly: "REPLACE_WITH_VARIANT_ID"
+    hardware_bundle: "REPLACE_WITH_VARIANT_ID"
+  
+  webhook_secret: "REPLACE_WITH_LS_WEBHOOK_SECRET"
+
+x402:
+  # x402 protocol configuration
+  # Receives crypto directly - you keep 100%
+  
+  # Receiving addresses (REPLACE WITH YOURS)
+  addresses:
+    default: "bc1qREPLACE_WITH_YOUR_BTC_ADDRESS"
+    bitcoin: "bc1qREPLACE_WITH_YOUR_BTC_ADDRESS"
+    ethereum: "0xREPLACE_WITH_YOUR_ETH_ADDRESS"
+    paypal: "your@paypal.email"
+  
+  # Required confirmations per scheme
+  confirmations_required:
+    bitcoin: 1   # 1 confirmation for <$100, more for larger
+    ethereum: 1  # Similar
+  
+  # Price per product in cents (for x402)
+  prices:
+    thick_client: 4900   # $49
+    vps_monthly: 900     # $9
+    hardware_bundle: 29900  # $299
+
+app:
+  success_url: "https://xkg.ai/success"
+  cancel_url: "https://xkg.ai/pricing"
+  webhook_url: "https://xkg.ai/api/webhook"
