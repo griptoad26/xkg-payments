@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XKG Pay — Checkout</title>
+<style>
+  :root { --bg: #0a0a0a; --fg: #fafafa; --muted: #888; --border: #1f1f1f; --accent: #22d3ee; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem; min-height: 100vh;
+    background: var(--bg); color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+  }
+  main {
+    max-width: 480px; width: 100%;
+    background: #111; border: 1px solid var(--border); border-radius: 12px;
+    padding: 2rem;
+  }
+  h1 { margin: 0 0 .25rem; font-size: 1.5rem; font-weight: 600; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
+  label { display: block; font-size: .8rem; color: var(--muted); margin: 1rem 0 .25rem; }
+  input, textarea {
+    width: 100%; padding: .6rem .75rem; background: #0a0a0a; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px; font-size: .95rem;
+    font-family: inherit;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 60px; }
+  .methods { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; margin-top: 1rem; }
+  .method {
+    padding: .75rem; border: 1px solid var(--border); border-radius: 8px;
+    background: #0a0a0a; cursor: pointer; text-align: center;
+    transition: border-color .15s, background .15s;
+    user-select: none;
+  }
+  .method:hover { border-color: #333; }
+  .method.active { border-color: var(--accent); background: #0a1a1f; }
+  .method .name { font-weight: 600; font-size: .95rem; }
+  .method .desc { font-size: .75rem; color: var(--muted); margin-top: .15rem; }
+  button.pay {
+    width: 100%; padding: .8rem; margin-top: 1.25rem;
+    background: var(--accent); color: #000; border: none; border-radius: 8px;
+    font-size: 1rem; font-weight: 600; cursor: pointer;
+  }
+  button.pay:disabled { opacity: .5; cursor: not-allowed; }
+  .result {
+    margin-top: 1.25rem; padding: 1rem; border-radius: 8px;
+    background: #0a0a0a; border: 1px solid var(--border);
+    font-family: ui-monospace, monospace; font-size: .8rem;
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 300px; overflow-y: auto;
+  }
+  .result.ok { border-color: #166534; }
+  .result.err { border-color: #7f1d1d; }
+  .result .label { color: var(--muted); display: block; margin-bottom: .25rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
+  .pill { display: inline-block; padding: .1rem .4rem; border-radius: 4px; background: #1f1f1f; color: var(--muted); font-size: .7rem; }
+  .pill.stripe { background: #635bff; color: #fff; }
+  .pill.x402 { background: #0052ff; color: #fff; }
+  .pill.lemonsqueezy { background: #fde047; color: #000; }
+  .pill.paypal { background: #003087; color: #fff; }
+  .pill.amazonpay { background: #ff9900; color: #000; }
+  .note { font-size: .75rem; color: var(--muted); margin-top: .5rem; }
+  footer { text-align: center; color: var(--muted); font-size: .75rem; margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>XKG Pay</h1>
+  <div class="sub">Checkout across card, crypto, Amazon, PayPal, and x402.</div>
+
+  <label>Amount (USD)</label>
+  <input id="amount" type="number" min="1" step="0.01" value="25.00">
+
+  <label>Description</label>
+  <textarea id="desc" placeholder="What is this charge for?">XKG Pro license</textarea>
+
+  <label>Email <span style="color:var(--muted);font-weight:400;">(optional for some methods)</span></label>
+  <input id="email" type="email" placeholder="customer@example.com">
+
+  <label>Payment method</label>
+  <div class="methods" id="methods">
+    <div class="method active" data-method="stripe">
+      <div class="name"><span class="pill stripe">Card</span></div>
+      <div class="desc">Visa, Mastercard, AmEx</div>
+    </div>
+    <div class="method" data-method="x402">
+      <div class="name"><span class="pill x402">x402</span></div>
+      <div class="desc">USDC on Base (crypto)</div>
+    </div>
+    <div class="method" data-method="lemonsqueezy">
+      <div class="name"><span class="pill lemonsqueezy">LemonSq.</span></div>
+      <div class="desc">Coming soon (P3)</div>
+    </div>
+    <div class="method" data-method="paypal">
+      <div class="name"><span class="pill paypal">PayPal</span></div>
+      <div class="desc">Coming soon (P4)</div>
+    </div>
+    <div class="method" data-method="amazonpay">
+      <div class="name"><span class="pill amazonpay">Amazon</span></div>
+      <div class="desc">Coming soon (P5)</div>
+    </div>
+  </div>
+
+  <button class="pay" id="pay-btn" disabled>Choose a payment method</button>
+
+  <div class="result" id="result" style="display:none;"></div>
+
+  <div class="note" id="note"></div>
+</main>
+
+<footer>
+  Powered by xkg-payments · <a href="/v1/ar/summary" style="color:var(--accent);">AR</a>
+</footer>
+
+<script>
+const API = window.location.origin + '/api/pay';
+let chosen = 'stripe';
+
+document.querySelectorAll('.method').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.method').forEach(m => m.classList.remove('active'));
+    el.classList.add('active');
+    chosen = el.dataset.method;
+    const btn = document.getElementById('pay-btn');
+    if (['lemonsqueezy', 'paypal', 'amazonpay'].includes(chosen)) {
+      btn.disabled = true;
+      btn.textContent = 'Coming soon — pick Card or x402';
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Pay with ' + (chosen === 'stripe' ? 'Card (Stripe)' : 'Crypto (x402)');
+    }
+  });
+});
+
+// Initialize button state
+document.getElementById('pay-btn').disabled = false;
+document.getElementById('pay-btn').textContent = 'Pay with Card (Stripe)';
+
+document.getElementById('pay-btn').addEventListener('click', async () => {
+  const result = document.getElementById('result');
+  result.style.display = 'block';
+  result.className = 'result';
+  result.textContent = 'Submitting…';
+
+  const amountUsd = parseFloat(document.getElementById('amount').value);
+  if (!amountUsd || amountUsd <= 0) {
+    result.className = 'result err';
+    result.textContent = 'Enter an amount greater than 0.';
+    return;
+  }
+  const amountCents = Math.round(amountUsd * 100);
+
+  const body = {
+    method: chosen,
+    amount_cents: amountCents,
+    currency: 'usd',
+    description: document.getElementById('desc').value || 'XKG payment',
+    customer_email: document.getElementById('email').value || null,
+  };
+
+  try {
+    const r = await fetch(API + '/v1/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (r.status >= 400) {
+      result.className = 'result err';
+      result.textContent = 'Error: ' + (data.detail || JSON.stringify(data));
+      return;
+    }
+    result.className = 'result ok';
+    if (chosen === 'x402') {
+      const pp = data.processor_payload;
+      const acc = pp.accepts[0];
+      result.innerHTML = '<span class="label">x402 challenge (next step)</span>' +
+        'payment_id: ' + pp.payment_id + '\n' +
+        'amount: $' + (data.amount_cents/100) + ' = ' + acc.maxAmountRequired + ' micro-USDC\n' +
+        'payTo: ' + acc.payTo + '\n' +
+        'asset (USDC): ' + acc.asset + '\n' +
+        'network: ' + pp.network + '\n' +
+        'expires: ' + data.expires_at + '\n\n' +
+        '<span class="label">To complete</span>' +
+        'Send ' + (data.amount_cents/100) + ' USDC to ' + acc.payTo + ' on ' + pp.network + ', then call:\n' +
+        'POST ' + API + '/v1/x402/settle\n' +
+        '{ "payment_id": "' + pp.payment_id + '", "tx_hash": "0x..." }';
+    } else if (chosen === 'stripe') {
+      result.innerHTML = '<span class="label">Stripe PaymentIntent</span>' +
+        JSON.stringify(data, null, 2) +
+        '\n\nNext: collect card details with Stripe Elements using the client_secret, then confirm the PaymentIntent on the client.';
+    }
+  } catch (e) {
+    result.className = 'result err';
+    result.textContent = 'Network error: ' + e.message;
+  }
+});
+</script>
+</body>
+</html>

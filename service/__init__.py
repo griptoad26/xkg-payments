@@ -1,0 +1,1 @@
+"""xkg-payments service package."""
