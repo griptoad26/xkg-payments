@@ -53,12 +53,17 @@ def require_bearer(authorization: Optional[str] = Header(None)) -> None:
 app = FastAPI(title="xkg-payments", version="0.2.0")
 # Auth is enforced per-route via Depends(require_bearer) so the health
 # endpoint stays public and the webhook can verify its own signature.
+from . import auth
 app.include_router(checkout_router)  # /v1/checkout, /v1/x402/settle, /v1/ledger, /v1/ar/*
+app.include_router(auth.router)        # /v1/auth/{register,login,logout,me}
 
 @app.on_event("startup")
 def _startup() -> None:
     models.init_db()
     log.info("xkg-payments ready: %s", settings.safe_summary())
+    # site_users + site_sessions (auth)
+    from .auth import _ensure_tables as _auth_et
+    _auth_et()
 
 
 @app.get("/health", dependencies=[])
