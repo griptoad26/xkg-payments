@@ -290,6 +290,14 @@ def me(
         raise HTTPException(status_code=401, detail="Invalid or expired session")
     user_id, exp = parsed
     with _get_session() as s:
+        # Token must still be in site_sessions (logout deletes it). Without this
+        # check, a logged-out cookie would still be valid until its exp.
+        sess = s.execute(
+            text("SELECT 1 FROM site_sessions WHERE token = :t"),
+            {"t": token},
+        ).first()
+        if not sess:
+            raise HTTPException(status_code=401, detail="Session revoked")
         row = s.execute(
             text("SELECT id, email, name FROM site_users WHERE id = :id"),
             {"id": user_id},
