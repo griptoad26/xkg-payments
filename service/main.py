@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import hmac
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -69,6 +70,29 @@ def _startup() -> None:
 @app.get("/health", dependencies=[])
 def health() -> dict:
     return {"status": "ok", "test_mode": settings.stripe_test_mode, "version": "0.1.0"}
+
+
+# ── Admin (readiness, dry-run checks) ─────────────────────────────────────
+# Gated by X-Admin-Token (env var). Header: `X-Admin-Token: <value>`.
+# Returns 403 if X_ADMIN_TOKEN is unset OR if the header doesn't match.
+# Returns 200 with the readiness report otherwise.
+
+def _require_admin(x_admin_token: Optional[str] = Header(None)) -> None:
+    expected = settings.admin_token
+    if not expected:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin endpoints disabled (X_ADMIN_TOKEN not set)")
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid X-Admin-Token")
+
+
+@app.get("/v1/admin/stripe-readiness", dependencies=[Depends(_require_admin)])
+def stripe_readiness() -> dict:
+    """Dry-run check: would xkg-payments be ready to flip to live Stripe?
+
+    Inspects env vars only — does NOT change any state, does NOT call the
+    Stripe API, does NOT touch the database. Safe to hit anytime.
+    """
+    return settings.live_readiness()
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────
