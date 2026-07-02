@@ -98,8 +98,10 @@ app.middleware("http")(rate_limit_middleware_factory())
 # Auth is enforced per-route via Depends(require_bearer) so the health
 # endpoint stays public and the webhook can verify its own signature.
 from . import auth
+from . import sync as sync_module
 app.include_router(checkout_router)  # /v1/checkout, /v1/x402/settle, /v1/ledger, /v1/ar/*
 app.include_router(auth.router)        # /v1/auth/{register,login,logout,me}
+app.include_router(sync_module.router) # /api/sync/{devices,upload,download}
 
 @app.on_event("startup")
 def _startup() -> None:
@@ -108,6 +110,8 @@ def _startup() -> None:
     # site_users + site_sessions (auth)
     from .auth import _ensure_tables as _auth_et
     _auth_et()
+    # sync_devices + sync_envelopes (Phase 4)
+    sync_module._ensure_tables()
 
 
 @app.get("/health", dependencies=[])
