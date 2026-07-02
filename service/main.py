@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from . import stripe_client
 from .checkout import router as checkout_router
+from .rate_limit import rate_limit_middleware_factory
 # When run as `uvicorn service.main:app`, service/ is the top-level package,
 # so use a plain import for the sibling db/ directory after adding cwd.
 import os, sys
@@ -89,6 +90,10 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Admin-Token", "Authorization"],
     max_age=600,
 )
+
+# Rate-limit /v1/auth/* endpoints (30 req/min/IP). Inner middleware — CORS above
+# short-circuits OPTIONS preflights so they don't burn the auth rate-limit bucket.
+app.middleware("http")(rate_limit_middleware_factory())
 
 # Auth is enforced per-route via Depends(require_bearer) so the health
 # endpoint stays public and the webhook can verify its own signature.

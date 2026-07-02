@@ -11,7 +11,7 @@ Token format:
   <user_id>.<expiry_epoch>.<hmac_sha256_signature>
 
 Storage: SQLite (same DB as the rest of xkg-payments) — `site_users` and
-`site_sessions` tables. Passwords stored as bcrypt hashes (cost 12).
+`site_sessions` tables. Passwords stored as scrypt hashes (N=131072, r=8, p=1, dklen=32).
 
 Cookie:
   - name: `seele_session`
@@ -179,7 +179,7 @@ def register(body: RegisterIn, response: Response):
             raise HTTPException(status_code=409, detail="Email already registered")
         user_id = str(uuid.uuid4())
         salt = secrets.token_bytes(16)
-        dk = hashlib.scrypt(body.password.encode(), salt=salt, n=16384, r=8, p=1, dklen=32)
+        dk = hashlib.scrypt(body.password.encode(), salt=salt, n=131072, r=8, p=1, dklen=32, maxmem=512*1024*1024)
         pwd_hash = base64.b64encode(salt).decode() + '$' + base64.b64encode(dk).decode()
         s.execute(
             text("""
@@ -226,8 +226,29 @@ def login(body: LoginIn, response: Response):
         salt_b64, dk_b64 = pwd_hash.split('$', 1)
         salt = base64.b64decode(salt_b64)
         expected = base64.b64decode(dk_b64)
-        candidate = hashlib.scrypt(body.password.encode(), salt=salt, n=16384, r=8, p=1, dklen=32)
-        if not hmac.compare_digest(expected, candidate):
+        # Try current OWASP-recommended cost first; fall back to legacy N=16384
+        # so prior users aren't locked out, then silently re-hash on match.
+        ok = False
+        for n, rehash in [(131072, True), (16384, False)]:
+            try:
+                candidate = hashlib.scrypt(
+                    body.password.encode(), salt=salt, n=n, r=8, p=1, dklen=32,
+                    maxmem=512*1024*1024,
+                )
+            except (ValueError, OSError):
+                continue
+            if hmac.compare_digest(expected, candidate):
+                ok = True
+                if rehash:
+                    new_dk = hashlib.scrypt(
+                        body.password.encode(), salt=salt, n=131072, r=8, p=1, dklen=32,
+                        maxmem=512*1024*1024,
+                    )
+                    new_hash = base64.b64encode(salt).decode() + '$' + base64.b64encode(new_dk).decode()
+                    s.execute(text("UPDATE site_users SET password_hash = :h WHERE id = :id"),
+                              {"h": new_hash, "id": user_id})
+                break
+        if not ok:
             raise HTTPException(status_code=401, detail="Invalid email or password")
         s.execute(
             text("UPDATE site_users SET last_login_at = :ts WHERE id = :id"),
@@ -262,15 +283,8 @@ def logout(response: Response, seele_session: Optional[str] = Cookie(default=Non
     return Response(status_code=204)
 
 
-@router.get("/verify", response_model=AuthOut)
-def verify(seele_session: Optional[str] = Cookie(default=None)):
-    """Validate a session token (read from cookie or Authorization: Bearer)."""
-    from fastapi import Header
-    from sqlalchemy import text
-
-    # Allow Authorization: Bearer <token> as well, for cross-origin fetch.
-    # (Cookie is the primary path; bearer is for the static site's JS calls.)
-    raise NotImplementedError  # overridden below
+# NOTE: removed /v1/auth/verify — it raised NotImplementedError (returned 500)
+# and was an attacker-useful probe. Use /v1/auth/me instead.
 
 
 @router.get("/me", response_model=AuthOut)
