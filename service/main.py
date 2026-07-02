@@ -12,6 +12,16 @@ Endpoints:
     GET  /v1/subscriptions/{id}       — fetch subscription
     POST /v1/subscriptions/{id}/cancel — cancel (at period end or immediately)
     POST /v1/webhooks/stripe          — Stripe webhook receiver
+
+CORS:
+    CORS middleware is enabled with an explicit allowlist (see
+    CORS_ALLOWED_ORIGINS below). Allowed origins are the storefront
+    (https://seele.agency, https://www.seele.agency), the tailnet
+    funnel (https://x2-nuc.tailb0d54b.ts.net), and a set of local
+    development ports. Requests from other origins are blocked by the
+    browser preflight. allow_credentials=True is required because
+    /v1/auth/* uses HttpOnly session cookies rather than Authorization
+    headers.
 """
 from __future__ import annotations
 
@@ -22,6 +32,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
@@ -52,6 +63,33 @@ def require_bearer(authorization: Optional[str] = Header(None)) -> None:
 # ── App + lifecycle ───────────────────────────────────────────────────────
 
 app = FastAPI(title="xkg-payments", version="0.2.0")
+
+# ── CORS allowlist (storefront origins + local dev) ─────────────────────
+# Explicit allowlist so cross-origin fetch() from the storefront succeeds.
+# allow_credentials=True is required because /v1/auth/* uses HttpOnly session
+# cookies rather than Authorization headers. Preflight (OPTIONS) is short-
+# circuited by the CORS middleware before it reaches the route handlers.
+CORS_ALLOWED_ORIGINS = [
+    "https://seele.agency",
+    "https://www.seele.agency",
+    "https://x2-nuc.tailb0d54b.ts.net",
+    "http://localhost:18789",  # local dev: openclaw gateway
+    "http://127.0.0.1:18789",
+    "http://localhost:8089",   # local dev: reverse proxy
+    "http://127.0.0.1:8089",
+    "http://localhost:8765",   # local dev: xkg-payments direct
+    "http://127.0.0.1:8765",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_credentials=True,   # we're using HttpOnly cookies, not Authorization headers, for /v1/auth/*
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Admin-Token", "Authorization"],
+    max_age=600,
+)
+
 # Auth is enforced per-route via Depends(require_bearer) so the health
 # endpoint stays public and the webhook can verify its own signature.
 from . import auth
